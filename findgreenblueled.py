@@ -1,6 +1,6 @@
 import cv2
 import numpy as np
-#HALLOOO
+
 cap = cv2.VideoCapture(0)
 
 while True:
@@ -75,6 +75,11 @@ while True:
     cv2.imshow("Combined Mask (What OpenCV Sees)", combined_mask)
 
     if cv2.waitKey(1) & 0xFF == ord('q'):
+    if key == ord('q'):
+        break
+    # Exit if either window is closed via the X button
+    if (cv2.getWindowProperty("Dual LED Detector", cv2.WND_PROP_VISIBLE) < 1 or
+            cv2.getWindowProperty("Combined Mask (What OpenCV Sees)", cv2.WND_PROP_VISIBLE) < 1):
         break
 
 cap.release()
