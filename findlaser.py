@@ -1,5 +1,13 @@
 import cv2
 import numpy as np
+import serial
+import time
+
+SERIAL_PORT = 'COM3'  # Double check the port by checking in Arduino IDE
+BAUD_RATE = 9600                     # Matches the Arduino's Serial.begin(9600)
+
+ser = serial.Serial(SERIAL_PORT, BAUD_RATE)
+time.sleep(2)  # opening the port resets the Arduino — give it time to boot before writing
 
 cap = cv2.VideoCapture(0)
 
@@ -15,15 +23,36 @@ cv2.namedWindow("Controls", cv2.WINDOW_NORMAL)
 cv2.resizeWindow("Controls", 400, 450)
 
 cv2.createTrackbar("Red On", "Controls", 1, 1, nothing)
-cv2.createTrackbar("Red R Min", "Controls", 95, 255, nothing)
+cv2.createTrackbar("Red R Min", "Controls", 225, 255, nothing)
 cv2.createTrackbar("Red GB Max", "Controls", 255, 255, nothing)
 
 cv2.createTrackbar("White On", "Controls", 1, 1, nothing)
-cv2.createTrackbar("White Min", "Controls", 28, 255, nothing)
-cv2.createTrackbar("Red Size Min", "Controls", 9, 100, nothing)
-cv2.createTrackbar("Red Size Max", "Controls", 250, 400, nothing)
-cv2.createTrackbar("White Area Min", "Controls", 20, 200, nothing)
-cv2.createTrackbar("White Area Max", "Controls", 200, 1000, nothing)
+cv2.createTrackbar("White Min", "Controls", 175, 255, nothing)
+
+prev_red_led_on = False
+
+# Click-and-drag region selector — detection is restricted to inside this
+# rectangle once one is drawn. roi stays None (whole frame) until the first drag.
+roi = None
+drawing = False
+ix, iy = -1, -1
+
+
+def select_roi(event, x, y, flags, param):
+    global roi, drawing, ix, iy
+    if event == cv2.EVENT_LBUTTONDOWN:
+        drawing = True
+        ix, iy = x, y
+        roi = None
+    elif event == cv2.EVENT_MOUSEMOVE and drawing:
+        roi = (min(ix, x), min(iy, y), max(ix, x), max(iy, y))
+    elif event == cv2.EVENT_LBUTTONUP:
+        drawing = False
+        roi = (min(ix, x), min(iy, y), max(ix, x), max(iy, y))
+
+
+cv2.namedWindow("Dual LED Detector")
+cv2.setMouseCallback("Dual LED Detector", select_roi)
 
 while True:
     ret, frame = cap.read()
@@ -45,15 +74,19 @@ while True:
     white_min = cv2.getTrackbarPos("White Min", "Controls")
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     white_mask = cv2.inRange(gray, white_min, 255) if white_on else np.zeros(frame.shape[:2], dtype=np.uint8)
-    redsize_min = cv2.getTrackbarPos("Red Size Min", "Controls")
-    redsize_max = cv2.getTrackbarPos("Red Size Max", "Controls")
-    white_area_min = cv2.getTrackbarPos("White Area Min", "Controls")
-    white_area_max = cv2.getTrackbarPos("White Area Max", "Controls")
 
     # 4. Clean up small background noise
     kernel = np.ones((5, 5), np.uint8)
     red_mask = cv2.morphologyEx(red_mask, cv2.MORPH_OPEN, kernel)
     white_mask = cv2.morphologyEx(white_mask, cv2.MORPH_OPEN, kernel)
+
+    # 4a. Restrict detection to the click-and-drag region, if one has been drawn
+    if roi is not None:
+        roi_mask = np.zeros(red_mask.shape, dtype=np.uint8)
+        rx0, ry0, rx1, ry1 = roi
+        cv2.rectangle(roi_mask, (rx0, ry0), (rx1, ry1), 255, -1)
+        red_mask = cv2.bitwise_and(red_mask, roi_mask)
+        white_mask = cv2.bitwise_and(white_mask, roi_mask)
 
     # 4b. Build a color-coded visualization so red glare and white core are
     # visually distinguishable in the mask window (red mask -> red, white mask -> cyan)
@@ -68,7 +101,7 @@ while True:
     red_led_on = False
 
     for contour in contours:
-        if cv2.contourArea(contour) > redsize_min and cv2.contourArea(contour) < redsize_max:
+        if cv2.contourArea(contour) > 0:
             x, y, w, h = cv2.boundingRect(contour)
 
             # Fill the contour's bounding rectangle (not just its exact silhouette)
@@ -80,7 +113,7 @@ while True:
             white_inside_red = cv2.bitwise_and(white_mask, contour_mask)
             white_pixels = cv2.countNonZero(white_inside_red)
 
-            if white_area_min < white_pixels < white_area_max:
+            if white_pixels > 0:
                 red_led_on = True
                 cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
                 cv2.putText(frame, "RED LASER", (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
@@ -88,6 +121,16 @@ while True:
     # 6. Draw an on-screen dashboard showing the real-time laser status
     r_text, r_color = ("RED LASER: ON", (0, 0, 255)) if red_led_on else ("RED LASER: OFF", (0, 0, 180))
     cv2.putText(frame, r_text, (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.8, r_color, 2)
+
+    # Only write to the Arduino when the state actually changes
+    if red_led_on != prev_red_led_on:
+        ser.write(b'1\n' if red_led_on else b'0\n')
+        prev_red_led_on = red_led_on
+
+    # Draw the selected region (yellow) for visual feedback
+    if roi is not None:
+        rx0, ry0, rx1, ry1 = roi
+        cv2.rectangle(frame, (rx0, ry0), (rx1, ry1), (0, 255, 255), 1)
 
     # Show the windows
     cv2.imshow("Dual LED Detector", frame)
@@ -103,3 +146,4 @@ while True:
 
 cap.release()
 cv2.destroyAllWindows()
+ser.close()
