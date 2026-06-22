@@ -1,3 +1,6 @@
+#Instructions: click and drag in the video (not mask) panel for
+#area of recognition
+
 import cv2
 import numpy as np
 import serial
