@@ -75,3 +75,4 @@ def multiply_bin(bin_a, bin_b):
     return cleaned_result if cleaned_result else "0"
 
 # use board.shutdown() or unplug and replug the Arduino to reset
+# you may also need to open a new terminal
