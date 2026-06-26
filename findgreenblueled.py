@@ -1,6 +1,6 @@
 import cv2
 import numpy as np
-#HALLOOO
+
 cap = cv2.VideoCapture(0)
 
 while True:
@@ -22,8 +22,15 @@ while True:
     upper_bright_blue = np.array([130, 255, 255])
     blue_mask = cv2.inRange(hsv, lower_bright_blue, upper_bright_blue)
 
-    # 4. Combine both masks using bitwise OR (detects green OR blue pixels)
+    # 3b. White/overexposed core mask — catches the blown-out center of a bright LED
+    # (very high value, near-zero saturation means the color washed out to white)
+    lower_white = np.array([0, 0, 220])
+    upper_white = np.array([180, 40, 255])
+    white_mask = cv2.inRange(hsv, lower_white, upper_white)
+
+    # 4. Combine all three masks — colored glare OR white core both count
     combined_mask = cv2.bitwise_or(green_mask, blue_mask)
+    combined_mask = cv2.bitwise_or(combined_mask, white_mask)
     
     # 5. Clean up small background noise
     kernel = np.ones((5, 5), np.uint8)
@@ -39,25 +46,21 @@ while True:
         if cv2.contourArea(contour) > 50:
             x, y, w, h = cv2.boundingRect(contour)
             
-            # Figure out WHICH LED was found by checking the pixel color in the center of the box
-            # We look at the original 'hsv' frame at the center coordinate of this bounding box
-            center_x = x + (w // 2)
-            center_y = y + (h // 2)
-            
-            # Grab the Hue value of that center pixel
-            # hsv[y, x] format because images are stored as rows (y) then columns (x)
-            pixel_hue = hsv[center_y, center_x][0]
+            # Count colored pixels in the bounding box region from each color mask.
+            # This works even when the center is blown-out white — the glare ring
+            # around it still carries the original color.
+            roi_green = green_mask[y:y + h, x:x + w]
+            roi_blue = blue_mask[y:y + h, x:x + w]
+            green_pixels = cv2.countNonZero(roi_green)
+            blue_pixels = cv2.countNonZero(roi_blue)
 
-            # Identify if the hue belongs to Green (35-85) or Blue (100-130)
-            if 35 <= pixel_hue <= 85:
+            if green_pixels > blue_pixels and green_pixels > 0:
                 green_led_on = True
-                # Draw a Green box (0, 255, 0)
                 cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
                 cv2.putText(frame, "GREEN LED", (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-                
-            elif 100 <= pixel_hue <= 130:
+
+            elif blue_pixels > green_pixels and blue_pixels > 0:
                 blue_led_on = True
-                # Draw a Blue box (255, 0, 0)
                 cv2.rectangle(frame, (x, y), (x + w, y + h), (255, 0, 0), 2)
                 cv2.putText(frame, "BLUE LED", (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
 
@@ -74,7 +77,12 @@ while True:
     cv2.imshow("Dual LED Detector", frame)
     cv2.imshow("Combined Mask (What OpenCV Sees)", combined_mask)
 
-    if cv2.waitKey(1) & 0xFF == ord('q'):
+    key = cv2.waitKey(1) & 0xFF
+    if key == ord('q'):
+        break
+    # Exit if either window is closed via the X button
+    if (cv2.getWindowProperty("Dual LED Detector", cv2.WND_PROP_VISIBLE) < 1 or
+            cv2.getWindowProperty("Combined Mask (What OpenCV Sees)", cv2.WND_PROP_VISIBLE) < 1):
         break
 
 cap.release()
