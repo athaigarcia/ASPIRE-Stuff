@@ -43,13 +43,13 @@ ix, iy = -1, -1
 
 def select_roi(event, x, y, flags, param):
     global roi, drawing, ix, iy
-    if event == cv2.EVENT_LBUTTONDOWN:
+    if event == cv2.EVENT_RBUTTONDOWN:
         drawing = True
         ix, iy = x, y
         roi = None
     elif event == cv2.EVENT_MOUSEMOVE and drawing:
         roi = (min(ix, x), min(iy, y), max(ix, x), max(iy, y))
-    elif event == cv2.EVENT_LBUTTONUP:
+    elif event == cv2.EVENT_RBUTTONUP:
         drawing = False
         roi = (min(ix, x), min(iy, y), max(ix, x), max(iy, y))
 

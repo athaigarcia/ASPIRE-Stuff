@@ -48,16 +48,16 @@ try:
 
         # Process every character typed before the user hit Enter
         for char in user_input:
-            if char == 'd':
+            if char == 's':
                 angle_1 = max(0, angle_1 - STEP)
                 board.servo_write(SERVO_1_PIN, angle_1)
-            elif char == 'a':
+            elif char == 'w':
                 angle_1 = min(180, angle_1 + STEP)
                 board.servo_write(SERVO_1_PIN, angle_1)
-            elif char == 's':
+            elif char == 'd':
                 angle_2 = max(0, angle_2 - STEP)
                 board.servo_write(SERVO_2_PIN, angle_2)
-            elif char == 'w':
+            elif char == 'a':
                 angle_2 = min(180, angle_2 + STEP)
                 board.servo_write(SERVO_2_PIN, angle_2)
 
